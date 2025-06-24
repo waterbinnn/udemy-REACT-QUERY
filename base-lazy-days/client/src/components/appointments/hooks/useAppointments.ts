@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { AppointmentDateMap } from '../types';
 import { getAvailableAppointments } from '../utils';
@@ -9,6 +9,12 @@ import { getMonthYearDetails, getNewMonthYear, MonthYear } from './monthYear';
 import { useLoginData } from '@/auth/AuthContext';
 import { axiosInstance } from '@/axiosInstance';
 import { queryKeys } from '@/react-query/constants';
+
+//for useQuery and PrefetchQuery
+const commonOptions = {
+  staleTime: 0,
+  gcTime: 30000, //5min
+};
 
 async function getAppointments(
   year: string,
@@ -53,6 +59,14 @@ export function useAppointments() {
   // 로그인한 사용자의 예약(흰색 표시)을 보여주기 위해 user 정보를 넘겨야 함
   const { userId } = useLoginData();
 
+  const selectFn = useCallback(
+    (data: AppointmentDateMap, showAll: boolean) => {
+      if (showAll) return data;
+      return getAvailableAppointments(data, userId);
+    },
+    [userId]
+  );
+
   /** ****************** START 3: useQuery 사용 ***************************** */
   // 현재 monthYear에 해당하는 예약을 가져오기 위한 useQuery 호출
 
@@ -62,6 +76,10 @@ export function useAppointments() {
   const { data: appointments = fallback } = useQuery({
     queryKey: [queryKeys.appointments, monthYear.year, monthYear.month], // 쿼리 키로 고유한 배열 사용
     queryFn: () => getAppointments(monthYear.year, monthYear.month),
+    select: (data) => selectFn(data, showAll),
+    refetchOnWindowFocus: true,
+    refetchInterval: 60000, //polling
+    ...commonOptions,
   });
 
   // 다음 달의 예약 데이터 Prefetching
@@ -74,6 +92,7 @@ export function useAppointments() {
         nextMonthYear.month,
       ],
       queryFn: () => getAppointments(nextMonthYear.year, nextMonthYear.month),
+      ...commonOptions,
     });
   }, [monthYear, queryClient]);
 
